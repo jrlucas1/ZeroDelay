@@ -1,0 +1,8 @@
+# Build output — the publishable .zip is generated from source, not committed.
+build/
+
+# OS / editor / cloud cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

@@ -1,0 +1,33 @@
+{
+   "action": {
+      "default_popup": "popup.html"
+   },
+   "author": {
+      "email": "joao@solitus.com.br"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "js": [ "content.js" ],
+      "matches": [ "https://www.youtube.com/*" ],
+      "run_at": "document_start"
+   } ],
+   "default_locale": "en",
+   "description": "__MSG_appDesc__",
+   "icons": {
+      "128": "icons/128.png",
+      "16": "icons/16.png",
+      "48": "icons/48.png"
+   },
+   "manifest_version": 3,
+   "name": "ZeroDelay",
+   "options_ui": {
+      "open_in_tab": true,
+      "page": "popup.html"
+   },
+   "permissions": [ "storage" ],
+   "version": "1.0",
+   "web_accessible_resources": [ {
+      "matches": [ "https://www.youtube.com/*" ],
+      "resources": [ "common.js", "inject.js" ]
+   } ]
+}
