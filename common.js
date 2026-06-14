@@ -1,0 +1,221 @@
+// ZeroDelay — YouTube live stream latency mitigator
+// Author: João Gustavo França <joao@solitus.com.br> (https://github.com/joaogfc)
+
+// ---------------------------------------------------------------------------
+// Localized labels
+// ---------------------------------------------------------------------------
+const msg = (key, fallback) => {
+    const m = chrome.i18n.getMessage(key);
+    return m || fallback || '';
+};
+
+export const label = {
+    // App
+    appName: msg('appName', 'Sincronizador de Live'),
+    tagline: msg('tagline', 'Mantenha as lives do YouTube em tempo real'),
+
+    // Modes / presets
+    sectionMode: msg('sectionMode', 'Modo'),
+    modesNote: msg('modesNote', 'Acelera só o necessário para reduzir a latência e descansa em 1.0x (que segura a latência). Menos buffer = mais perto do ao vivo, mas pede internet melhor.'),
+    minWarning: msg('minWarning', ''),
+
+    modeOff: msg('modeOff', 'Desligado'),
+    modeOffDesc: msg('modeOffDesc', 'Reprodução normal, sem ajustes.'),
+    modeOffConn: msg('modeOffConn', 'Qualquer conexão'),
+    modeOffGain: msg('modeOffGain', '—'),
+
+    modeAuto: msg('modeAuto', 'Automático'),
+    modeAutoDesc: msg('modeAutoDesc', 'Analisa sua conexão e ajusta sozinho: mais perto do ao vivo quando a internet aguenta, mais buffer quando ela oscila.'),
+    modeAutoConn: msg('modeAutoConn', 'Qualquer conexão (adapta-se)'),
+    modeAutoGain: msg('modeAutoGain', 'adaptável'),
+
+    modeSuave: msg('modeSuave', 'Suave'),
+    modeSuaveDesc: msg('modeSuaveDesc', 'Mantém bastante buffer e reduz a latência com folga. Ideal para internet fraca ou instável.'),
+    modeSuaveConn: msg('modeSuaveConn', 'Internet lenta ou instável (~3+ Mbps)'),
+    modeSuaveGain: msg('modeSuaveGain', 'buffer ~8s'),
+
+    modeBalanced: msg('modeBalanced', 'Equilibrado'),
+    modeBalancedDesc: msg('modeBalancedDesc', 'Reduz bem a latência mantendo ~6s de buffer. Bom meio-termo.'),
+    modeBalancedConn: msg('modeBalancedConn', 'Internet comum (~5–10 Mbps)'),
+    modeBalancedGain: msg('modeBalancedGain', 'buffer ~6s'),
+
+    modeAggressive: msg('modeAggressive', 'Próximo'),
+    modeAggressiveDesc: msg('modeAggressiveDesc', 'Chega mais perto do ao vivo, mantendo ~4,5s de buffer. Precisa de internet estável.'),
+    modeAggressiveConn: msg('modeAggressiveConn', 'Internet estável (~15+ Mbps)'),
+    modeAggressiveGain: msg('modeAggressiveGain', 'buffer ~4,5s'),
+
+    modeMin: msg('modeMin', 'Latência Mínima'),
+    modeMinDesc: msg('modeMinDesc', 'O mais perto possível do ao vivo, com só ~3,5s de buffer. Precisa de internet rápida e estável.'),
+    modeMinConn: msg('modeMinConn', 'Internet rápida e estável (~25+ Mbps)'),
+    modeMinGain: msg('modeMinGain', 'buffer ~3,5s'),
+
+    // Player indicators
+    sectionIndicators: msg('sectionIndicators', 'Indicadores no player'),
+    showPlaybackRate: msg('showPlaybackRate'),
+    showLatency: msg('showLatency'),
+    showHealth: msg('showHealth'),
+
+    // Reset
+    reset: msg('reset', 'Restaurar padrões'),
+    resetHint: msg('resetHint', 'Segure por 1 segundo para restaurar.'),
+};
+
+// ---------------------------------------------------------------------------
+// Storage keys (DO NOT rename — existing users have data under these keys).
+// The engine (content.js / inject.js) still reads every key below; the popup
+// only writes them through presets. showEstimation / showCurrent stay so the
+// engine keeps resolving them (defaulting to off), even though the popup no
+// longer exposes a toggle for them.
+// ---------------------------------------------------------------------------
+export const storage = ['enabled', 'playbackRate', 'showPlaybackRate', 'showLatency', 'showHealth', 'showEstimation', 'showCurrent', 'bufferTarget', 'auto', 'skip', 'skipThreathold'];
+
+export const defaultEnabled = true;
+
+export const defaultPlaybackRate = 1.25;
+export const minPlaybackRate = 1.05;
+export const maxPlaybackRate = 16.0;
+export const stepPlaybackRate = 0.05;
+
+export const defaultShowPlaybackRate = false;
+export const defaultShowLatency = false;
+export const defaultShowHealth = false;
+export const defaultShowEstimation = false;
+export const defaultShowCurrent = false;
+
+// Catch-up speed (how fast it accelerates while reducing latency). Validated
+// on real streams: a gentle 1.25x reduces latency smoothly without overshoot.
+// `bufferTarget` = how many seconds of (smoothed) buffer each mode keeps; less
+// buffer means closer to live but needs a better connection. `auto` lets the
+// engine pick the target from the measured connection.
+export const defaultAuto = true;
+export const defaultBufferTarget = 6.0;
+export const minBufferTarget = 2.0;
+export const maxBufferTarget = 15.0;
+export const stepBufferTarget = 0.5;
+
+// Skip-to-live is on by default, 30 s behind.
+export const defaultSkip = true;
+export const defaultSkipThreathold = 30.0;
+export const minSkipThreathold = 1.0;
+export const maxSkipThreathold = 999999.0;
+export const stepSkipThreathold = 1.0;
+
+// ---------------------------------------------------------------------------
+// Presets — every setting is delivered through one of these modes. The popup
+// no longer edits primitives directly; clicking a mode writes its primitives,
+// and the active mode is derived back from them (see deriveMode).
+// ---------------------------------------------------------------------------
+export const presets = {
+    off: {
+        enabled: false,
+        skip: false,
+    },
+    auto: {
+        enabled: true,
+        playbackRate: 1.25,
+        auto: true,
+        skip: true,
+        skipThreathold: 30.0,
+    },
+    suave: {
+        enabled: true,
+        playbackRate: 1.25,
+        auto: false,
+        bufferTarget: 8.0,
+        skip: true,
+        skipThreathold: 30.0,
+    },
+    balanced: {
+        enabled: true,
+        playbackRate: 1.25,
+        auto: false,
+        bufferTarget: 6.0,
+        skip: true,
+        skipThreathold: 30.0,
+    },
+    aggressive: {
+        enabled: true,
+        playbackRate: 1.25,
+        auto: false,
+        bufferTarget: 4.5,
+        skip: true,
+        skipThreathold: 30.0,
+    },
+    min: {
+        enabled: true,
+        playbackRate: 1.25,
+        auto: false,
+        bufferTarget: 3.5,
+        skip: true,
+        skipThreathold: 30.0,
+    },
+};
+
+// Order shown in the UI, with display metadata.
+export const modeOrder = ['off', 'auto', 'suave', 'balanced', 'aggressive', 'min'];
+
+export const modeMeta = {
+    off: { title: label.modeOff, desc: label.modeOffDesc, conn: label.modeOffConn, gain: label.modeOffGain },
+    auto: { title: label.modeAuto, desc: label.modeAutoDesc, conn: label.modeAutoConn, gain: label.modeAutoGain },
+    suave: { title: label.modeSuave, desc: label.modeSuaveDesc, conn: label.modeSuaveConn, gain: label.modeSuaveGain },
+    balanced: { title: label.modeBalanced, desc: label.modeBalancedDesc, conn: label.modeBalancedConn, gain: label.modeBalancedGain },
+    aggressive: { title: label.modeAggressive, desc: label.modeAggressiveDesc, conn: label.modeAggressiveConn, gain: label.modeAggressiveGain },
+    min: { title: label.modeMin, desc: label.modeMinDesc, conn: label.modeMinConn, gain: label.modeMinGain },
+};
+
+// Derive which mode is active from the resolved settings.
+export function deriveMode(d) {
+    const r = {
+        enabled: value(d.enabled, defaultEnabled),
+        playbackRate: limitValue(d.playbackRate, defaultPlaybackRate, minPlaybackRate, maxPlaybackRate, stepPlaybackRate),
+        auto: value(d.auto, defaultAuto),
+        bufferTarget: limitValue(d.bufferTarget, defaultBufferTarget, minBufferTarget, maxBufferTarget, stepBufferTarget),
+        skip: value(d.skip, defaultSkip),
+        skipThreathold: value(d.skipThreathold, defaultSkipThreathold),
+    };
+    const eq = (a, b) => Math.abs(a - b) < 0.001;
+    for (const name of modeOrder) {
+        const preset = presets[name];
+        let ok = true;
+        for (const [k, v] of Object.entries(preset)) {
+            if (typeof v === 'number') {
+                if (!eq(r[k], v)) { ok = false; break; }
+            } else if (r[k] !== v) {
+                ok = false; break;
+            }
+        }
+        if (ok) return name;
+    }
+    return 'custom';
+}
+
+export function value(value, default_value) {
+    return value ?? default_value;
+}
+
+export function limitValue(value, default_value, min_value, max_value, step_value) {
+    return step(range(normalize(value, default_value), min_value, max_value), step_value);
+}
+
+function isNumber(value) {
+    return Number.isFinite(parseFloat(value));
+}
+
+function normalize(value, default_value) {
+    return isNumber(value) ? value : default_value;
+}
+
+function range(value, min_value, max_value) {
+    return Math.min(Math.max(value, min_value), max_value);
+}
+
+function step(value, step_value) {
+    const step = 1.0 / step_value;
+    return Math.round(value * step) / step;
+}
+
+export function isLiveChat(url) {
+    return url.startsWith('https://www.youtube.com/live_chat?')
+        || url.startsWith('https://www.youtube.com/live_chat_replay?')
+        ;
+}
