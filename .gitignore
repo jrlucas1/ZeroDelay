@@ -1,6 +1,10 @@
 # Build output — the publishable .zip is generated from source, not committed.
 build/
 
+# Node tooling (lint / web-ext) — devDependencies only, never shipped.
+node_modules/
+web-ext-artifacts/
+
 # OS / editor / cloud cruft
 .DS_Store
 Thumbs.db

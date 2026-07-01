@@ -1,0 +1,20 @@
+{
+  "name": "zerodelay",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Tooling (lint + validations) for the ZeroDelay browser extension. Not published to npm.",
+  "license": "GPL-3.0",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:ext": "node scripts/lint-ext.mjs",
+    "check:locales": "node scripts/check-locales.mjs",
+    "check": "npm run lint && npm run check:locales && npm run lint:ext"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "eslint": "9.39.4",
+    "globals": "17.7.0",
+    "web-ext": "10.4.0"
+  }
+}
